@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!)
+}
 
 const PRICES = {
   wellness: { amount: 1500, label: '$15 deposit — Custom Wellness Blend' },
@@ -19,7 +21,7 @@ export async function POST(req: NextRequest) {
     const price = PRICES[path as keyof typeof PRICES]
     const origin = req.headers.get('origin') || 'https://tea-wizard.vercel.app'
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
