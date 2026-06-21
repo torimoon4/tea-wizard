@@ -115,8 +115,8 @@ export default function CustomBlendPage() {
     const { error } = await getSupabase().from('blend_requests').insert([payload])
 
     if (error) {
-      console.error(error)
-      setSubmitError('Something went wrong saving your request. Please try again.')
+      console.error('Supabase error:', error)
+      setSubmitError(`Error: ${error.message}`)
       setSubmitting(false)
       return
     }
