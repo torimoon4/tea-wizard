@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
+import { getSupabase } from '@/lib/supabase'
 
 type Path = 'wellness' | 'ritual' | null
 
@@ -27,24 +28,30 @@ const CHAKRAS = [
   { value: 'Crown',        color: '#9B59B6', desc: 'Spirituality, connection, divine' },
 ]
 
-const WELLNESS_STEPS = ['0','1','2w','3w','4w','confirm']
-const RITUAL_STEPS   = ['0','1','2r','3r','4r','5r','6r','confirm']
+const WELLNESS_STEPS = ['0','1','contact','2w','3w','4w','confirm']
+const RITUAL_STEPS   = ['0','1','contact','2r','3r','4r','5r','6r','confirm']
 
 export default function CustomBlendPage() {
-  const [step, setStep]       = useState('0')
-  const [path, setPath]       = useState<Path>(null)
+  const [step, setStep]   = useState('0')
+  const [path, setPath]   = useState<Path>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
-  const [physical, setPhysical]         = useState<string[]>([])
-  const [physicalWrite, setPhysicalWrite] = useState('')
-  const [physicalOpen, setPhysicalOpen]   = useState(false)
+  // Contact info
+  const [customerName, setCustomerName]   = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
 
-  const [intentions, setIntentions]         = useState<string[]>([])
-  const [intentionWrite, setIntentionWrite]   = useState('')
-  const [intentionOpen, setIntentionOpen]     = useState(false)
+  const [physical, setPhysical]               = useState<string[]>([])
+  const [physicalWrite, setPhysicalWrite]     = useState('')
+  const [physicalOpen, setPhysicalOpen]       = useState(false)
 
-  const [physicalR, setPhysicalR]         = useState<string[]>([])
-  const [physicalRWrite, setPhysicalRWrite] = useState('')
-  const [physicalROpen, setPhysicalROpen]   = useState(false)
+  const [intentions, setIntentions]             = useState<string[]>([])
+  const [intentionWrite, setIntentionWrite]     = useState('')
+  const [intentionOpen, setIntentionOpen]       = useState(false)
+
+  const [physicalR, setPhysicalR]               = useState<string[]>([])
+  const [physicalRWrite, setPhysicalRWrite]     = useState('')
+  const [physicalROpen, setPhysicalROpen]       = useState(false)
 
   const [chakra, setChakra] = useState<string | null>(null)
 
@@ -55,48 +62,73 @@ export default function CustomBlendPage() {
   const [rStory2, setRStory2] = useState('')
   const [rStory3, setRStory3] = useState('')
 
-  const steps = path === 'ritual' ? RITUAL_STEPS : WELLNESS_STEPS
-  const idx   = steps.indexOf(step)
-  const total = steps.length - 2 // exclude step 0 and confirm
-  const pct   = steps.length > 1 ? Math.round((idx / (steps.length - 1)) * 100) : 0
+  const steps  = path === 'ritual' ? RITUAL_STEPS : WELLNESS_STEPS
+  const idx    = steps.indexOf(step)
+  const total  = steps.length - 3 // exclude step 0, contact, and confirm
+  const pct    = steps.length > 1 ? Math.round((idx / (steps.length - 1)) * 100) : 0
 
   function go(id: string) {
     setStep(id)
+    setSubmitError('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function goNext() {
-    const next = steps[idx + 1]
-    if (next) go(next)
-  }
-
-  function selectPath(p: Path) {
-    setPath(p)
-  }
+  function selectPath(p: Path) { setPath(p) }
 
   function continueFromPath() {
     if (!path) return
-    go(path === 'wellness' ? '2w' : '2r')
+    go('contact')
   }
 
   function toggleArr(arr: string[], set: (v: string[]) => void, val: string) {
     set(arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val])
   }
 
-  function handleSubmit() {
-    const payload = {
-      path, timestamp: new Date().toISOString(),
-      physical, physicalWrite, intentions, intentionWrite,
-      physicalR, physicalRWrite, chakra,
-      wStory1, wStory2, wStory3, rStory1, rStory2, rStory3,
+  async function handleSubmit() {
+    if (!customerName.trim() || !customerEmail.trim()) return
+    setSubmitting(true)
+    setSubmitError('')
+
+    const payload = path === 'wellness' ? {
+      customer_name: customerName.trim(),
+      customer_email: customerEmail.trim(),
+      path: 'wellness',
+      physical_needs: physical,
+      physical_writein: physicalWrite || null,
+      story_experiencing: wStory1 || null,
+      story_desired_effect: wStory2 || null,
+      story_other: wStory3 || null,
+    } : {
+      customer_name: customerName.trim(),
+      customer_email: customerEmail.trim(),
+      path: 'ritual',
+      intentions,
+      intention_writein: intentionWrite || null,
+      physical_needs_ritual: physicalR,
+      physical_ritual_writein: physicalRWrite || null,
+      chakra,
+      story_season: rStory1 || null,
+      story_symbols: rStory2 || null,
+      story_allergies: rStory3 || null,
     }
-    console.log('Custom blend submission:', payload)
+
+    const { error } = await getSupabase().from('blend_requests').insert([payload])
+
+    if (error) {
+      console.error(error)
+      setSubmitError('Something went wrong saving your request. Please try again.')
+      setSubmitting(false)
+      return
+    }
+
     go('confirm')
+    setSubmitting(false)
   }
 
   const stepLabel: Record<string, string> = {
     '0': 'Custom Blend Builder',
     '1': 'Custom Blend · Choose your path',
+    'contact': 'Custom Blend · Your details',
     '2w': 'Custom Blend · Physical needs',
     '3w': 'Custom Blend · Your story',
     '4w': 'Custom Blend · Review',
@@ -110,7 +142,6 @@ export default function CustomBlendPage() {
 
   const innerSteps = steps.slice(1, steps.length - 1)
 
-  /* ---- Review summary helpers ---- */
   function SummaryItem({ label, value }: { label: string; value: string | string[] | null }) {
     const display = Array.isArray(value) ? value.join(', ') : value
     if (!display) return null
@@ -122,9 +153,10 @@ export default function CustomBlendPage() {
     )
   }
 
+  const contactValid = customerName.trim().length > 0 && customerEmail.trim().includes('@')
+
   return (
     <>
-      {/* ===== Sticky builder header ===== */}
       <header className="builder-header">
         <span className="builder-header__logo">
           <span>Tea</span> <span>Wizard</span>
@@ -138,18 +170,17 @@ export default function CustomBlendPage() {
       </div>
 
       <main className="builder-content">
-        {/* Dot row */}
         {step !== '0' && step !== 'confirm' && (
           <>
             <div className="builder-dots">
               {innerSteps.map((s, i) => {
                 const absIdx = i + 1
-                if (absIdx < idx)       return <div key={s} className="builder-dot builder-dot--done" />
-                if (absIdx === idx)     return <div key={s} className="builder-dot builder-dot--current" />
+                if (absIdx < idx)   return <div key={s} className="builder-dot builder-dot--done" />
+                if (absIdx === idx) return <div key={s} className="builder-dot builder-dot--current" />
                 return <div key={s} className="builder-dot" />
               })}
             </div>
-            <p className="builder-step-count">Step {idx} of {total}</p>
+            <p className="builder-step-count">Step {idx} of {total + 1}</p>
           </>
         )}
 
@@ -162,7 +193,7 @@ export default function CustomBlendPage() {
             <p className="step-welcome__body">
               Answer a few questions about what you&apos;re seeking — physically, emotionally, and spiritually.
               Tori will review your request personally and respond within 2–3 business days with your
-              custom blend recommendation and a personal invoice. No payment is needed until you approve.
+              custom blend recommendation. A small deposit is collected at submission to reserve your spot.
             </p>
             <div className="builder-nav builder-nav--center">
               <button className="btn-filled" onClick={() => go('1')}>Begin →</button>
@@ -203,6 +234,45 @@ export default function CustomBlendPage() {
           </>
         )}
 
+        {/* ===== CONTACT INFO ===== */}
+        {step === 'contact' && (
+          <>
+            <h2 className="step-heading">Where should I <em>reach you?</em></h2>
+            <p className="step-sub">So Tori can send your blend recommendation and invoice.</p>
+            <div className="story-field">
+              <label>Your name</label>
+              <textarea
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+                placeholder="First name is fine"
+                rows={1}
+                style={{ minHeight: 'auto', resize: 'none', paddingTop: 12, paddingBottom: 12 }}
+              />
+            </div>
+            <div className="story-field">
+              <label>Email address</label>
+              <textarea
+                value={customerEmail}
+                onChange={e => setCustomerEmail(e.target.value)}
+                placeholder="you@example.com"
+                rows={1}
+                style={{ minHeight: 'auto', resize: 'none', paddingTop: 12, paddingBottom: 12 }}
+              />
+            </div>
+            <p style={{ fontSize: '0.8rem', color: '#888', marginBottom: 28, lineHeight: 1.6 }}>
+              Your information is kept private and only used to fulfill your blend request.
+            </p>
+            <div className="builder-nav">
+              <button className="btn-outline" onClick={() => go('1')}>← Back</button>
+              <button
+                className="btn-filled"
+                disabled={!contactValid}
+                onClick={() => go(path === 'wellness' ? '2w' : '2r')}
+              >Continue →</button>
+            </div>
+          </>
+        )}
+
         {/* ===== STEP 2W — Physical needs ===== */}
         {step === '2w' && (
           <>
@@ -232,7 +302,7 @@ export default function CustomBlendPage() {
               </div>
             </div>
             <div className="builder-nav">
-              <button className="btn-outline" onClick={() => go('1')}>← Back</button>
+              <button className="btn-outline" onClick={() => go('contact')}>← Back</button>
               <button className="btn-filled" onClick={() => go('3w')}>Continue →</button>
             </div>
           </>
@@ -242,7 +312,7 @@ export default function CustomBlendPage() {
         {step === '3w' && (
           <>
             <h2 className="step-heading">Tell me a little <em>more</em></h2>
-            <p className="step-sub">Take your time — the more detail you share, the more intentional your blend can be.</p>
+            <p className="step-sub">The more detail you share, the more intentional your blend can be.</p>
             <div className="story-field">
               <label>What are you experiencing? <span style={{ fontWeight: 300, color: '#888' }}>(symptoms, feelings, patterns)</span></label>
               <textarea value={wStory1} onChange={e => setWStory1(e.target.value)} placeholder="I've been having anxiety that keeps me up at night..." rows={4} />
@@ -272,6 +342,8 @@ export default function CustomBlendPage() {
               custom blend recommendation and a personal invoice. <strong>No payment is needed until you approve.</strong>
             </div>
             <div className="review-summary">
+              <SummaryItem label="Name" value={customerName} />
+              <SummaryItem label="Email" value={customerEmail} />
               <SummaryItem label="Path" value="Custom Blend (Wellness)" />
               <SummaryItem label="Physical needs" value={physical} />
               {physicalWrite && <SummaryItem label="Written need" value={physicalWrite} />}
@@ -279,9 +351,12 @@ export default function CustomBlendPage() {
               <SummaryItem label="What you want this blend to do" value={wStory2} />
               <SummaryItem label="Allergies / medications / preferences" value={wStory3} />
             </div>
+            {submitError && <p style={{ color: '#c0392b', fontSize: '0.9rem', marginBottom: 16 }}>{submitError}</p>}
             <div className="builder-nav builder-nav--center">
               <button className="btn-outline" style={{ marginRight: 16 }} onClick={() => go('3w')}>← Back</button>
-              <button className="btn-submit" onClick={handleSubmit}>Submit my request ✦</button>
+              <button className="btn-submit" onClick={handleSubmit} disabled={submitting}>
+                {submitting ? 'Submitting...' : 'Submit my request ✦'}
+              </button>
             </div>
           </>
         )}
@@ -309,7 +384,7 @@ export default function CustomBlendPage() {
               </div>
             </div>
             <div className="builder-nav">
-              <button className="btn-outline" onClick={() => go('1')}>← Back</button>
+              <button className="btn-outline" onClick={() => go('contact')}>← Back</button>
               <button className="btn-filled" onClick={() => go('3r')}>Continue →</button>
             </div>
           </>
@@ -409,6 +484,8 @@ export default function CustomBlendPage() {
               custom blend recommendation and a personal invoice. <strong>No payment is needed until you approve.</strong>
             </div>
             <div className="review-summary">
+              <SummaryItem label="Name" value={customerName} />
+              <SummaryItem label="Email" value={customerEmail} />
               <SummaryItem label="Path" value="Ritual Custom Blend" />
               <SummaryItem label="Intentions" value={intentions} />
               {intentionWrite && <SummaryItem label="Written intention" value={intentionWrite} />}
@@ -419,9 +496,12 @@ export default function CustomBlendPage() {
               <SummaryItem label="Other intentions / symbols" value={rStory2} />
               <SummaryItem label="Allergies / medications" value={rStory3} />
             </div>
+            {submitError && <p style={{ color: '#c0392b', fontSize: '0.9rem', marginBottom: 16 }}>{submitError}</p>}
             <div className="builder-nav builder-nav--center">
               <button className="btn-outline" style={{ marginRight: 16 }} onClick={() => go('5r')}>← Back</button>
-              <button className="btn-submit" onClick={handleSubmit}>Submit my ritual ✦</button>
+              <button className="btn-submit" onClick={handleSubmit} disabled={submitting}>
+                {submitting ? 'Submitting...' : 'Submit my ritual ✦'}
+              </button>
             </div>
           </>
         )}
@@ -434,12 +514,12 @@ export default function CustomBlendPage() {
             <h2 className="confirmation__headline">Your blend is in my hands</h2>
             <p className="confirmation__body">
               I&apos;ll review your request personally and craft something made just for you.
-              Expect to hear back within 2–3 business days — keep an eye on your messages,
+              Expect to hear back within 2–3 business days — keep an eye on your inbox,
               as I may have a few follow-up questions.
             </p>
             <div className="confirmation__inbox-box">
-              <strong>A confirmation has been sent to your inbox.</strong><br />
-              You can also check your <strong>Messages</strong> tab in your account for follow-up from Tori.
+              <strong>A confirmation has been sent to {customerEmail || 'your inbox'}.</strong><br />
+              Tori will reach out within 2–3 business days with your custom blend recommendation.
             </div>
             <Link href="/" className="btn-outline">Back to Tea Wizard →</Link>
           </div>
