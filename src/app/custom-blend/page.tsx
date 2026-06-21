@@ -112,15 +112,14 @@ export default function CustomBlendPage() {
       story_allergies: rStory3 || null,
     }
 
-    const { data, error } = await getSupabase()
+    const blendRequestId = crypto.randomUUID()
+    const { error } = await getSupabase()
       .from('blend_requests')
-      .insert([payload])
-      .select('id')
-      .single()
+      .insert([{ id: blendRequestId, ...payload }])
 
-    if (error || !data) {
+    if (error) {
       console.error('Supabase error:', error)
-      setSubmitError(`Error: ${error?.message ?? 'Could not save request'}`)
+      setSubmitError(`Error: ${error.message}`)
       setSubmitting(false)
       return
     }
@@ -129,7 +128,7 @@ export default function CustomBlendPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        blendRequestId: data.id,
+        blendRequestId,
         path,
         customerEmail: customerEmail.trim(),
       }),
