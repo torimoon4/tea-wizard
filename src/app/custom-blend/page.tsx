@@ -112,17 +112,38 @@ export default function CustomBlendPage() {
       story_allergies: rStory3 || null,
     }
 
-    const { error } = await getSupabase().from('blend_requests').insert([payload])
+    const { data, error } = await getSupabase()
+      .from('blend_requests')
+      .insert([payload])
+      .select('id')
+      .single()
 
-    if (error) {
+    if (error || !data) {
       console.error('Supabase error:', error)
-      setSubmitError(`Error: ${error.message}`)
+      setSubmitError(`Error: ${error?.message ?? 'Could not save request'}`)
       setSubmitting(false)
       return
     }
 
-    go('confirm')
-    setSubmitting(false)
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        blendRequestId: data.id,
+        path,
+        customerEmail: customerEmail.trim(),
+      }),
+    })
+
+    const json = await res.json()
+
+    if (!res.ok || !json.url) {
+      setSubmitError('Could not start checkout. Please try again.')
+      setSubmitting(false)
+      return
+    }
+
+    window.location.href = json.url
   }
 
   const stepLabel: Record<string, string> = {
@@ -338,8 +359,8 @@ export default function CustomBlendPage() {
             <h2 className="step-heading">Review your <em>request</em></h2>
             <p className="step-sub">Give everything a final look before you submit.</p>
             <div className="review-banner">
-              I&apos;ll review your request <strong>personally</strong> and reach out within <strong>2–3 business days</strong> with your
-              custom blend recommendation and a personal invoice. <strong>No payment is needed until you approve.</strong>
+              I&apos;ll review your request <strong>personally</strong> and reach out within <strong>2–3 business days</strong>.
+              A <strong>$15 deposit</strong> is collected now to reserve your spot — the remaining $23 is invoiced after I craft your recommendation.
             </div>
             <div className="review-summary">
               <SummaryItem label="Name" value={customerName} />
@@ -355,7 +376,7 @@ export default function CustomBlendPage() {
             <div className="builder-nav builder-nav--center">
               <button className="btn-outline" style={{ marginRight: 16 }} onClick={() => go('3w')}>← Back</button>
               <button className="btn-submit" onClick={handleSubmit} disabled={submitting}>
-                {submitting ? 'Submitting...' : 'Submit my request ✦'}
+                {submitting ? 'Preparing checkout...' : 'Submit & pay $15 deposit ✦'}
               </button>
             </div>
           </>
@@ -480,8 +501,8 @@ export default function CustomBlendPage() {
             <h2 className="step-heading">Review your <em>ritual request</em></h2>
             <p className="step-sub">Give everything a final look before you submit.</p>
             <div className="review-banner">
-              I&apos;ll review your request <strong>personally</strong> and reach out within <strong>2–3 business days</strong> with your
-              custom blend recommendation and a personal invoice. <strong>No payment is needed until you approve.</strong>
+              I&apos;ll review your request <strong>personally</strong> and reach out within <strong>2–3 business days</strong>.
+              A <strong>$20 deposit</strong> is collected now to reserve your spot — the remaining $38 is invoiced after I craft your recommendation.
             </div>
             <div className="review-summary">
               <SummaryItem label="Name" value={customerName} />
@@ -500,7 +521,7 @@ export default function CustomBlendPage() {
             <div className="builder-nav builder-nav--center">
               <button className="btn-outline" style={{ marginRight: 16 }} onClick={() => go('5r')}>← Back</button>
               <button className="btn-submit" onClick={handleSubmit} disabled={submitting}>
-                {submitting ? 'Submitting...' : 'Submit my ritual ✦'}
+                {submitting ? 'Preparing checkout...' : 'Submit & pay $20 deposit ✦'}
               </button>
             </div>
           </>
